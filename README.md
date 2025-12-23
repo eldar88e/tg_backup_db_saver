@@ -13,6 +13,7 @@ The script for backing up, compressing and sending databases to Telegram.
 
 1. Clone repo
 2. Copy `backup.yml.example` в `backup.yml`:
+
    ```bash
    cp backup.yml.example backup.yml
    ```
