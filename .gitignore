@@ -1,0 +1,8 @@
+/backup.yml
+!/backup.yml.example
+
+/.idea
+.DS_Store
+
+/backups/*
+!/backups/.keep

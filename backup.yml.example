@@ -1,0 +1,12 @@
+telegram:
+  bot_token: "123456789:AAABBBCCCDDDEEE"
+  chat_id: "-1001234567890" # id группы или канала
+
+backups:
+  - name: crm
+    workdir: "/home/deploy/crm"
+    command: "docker exec crm_pg pg_dump -U crm_user crm_db > crm.sql"
+
+  - name: shop
+    workdir: "/home/deploy/shop"
+    command: "docker exec shop_pg pg_dump -U shop_user shop_db > shop.sql"
