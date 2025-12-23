@@ -12,6 +12,7 @@ CONFIG   = YAML.load_file('backup.yml')
 BASE_DIR = File.expand_path(__dir__)
 TOKEN    = CONFIG['telegram']['bot_token']
 CHAT_ID  = CONFIG['telegram']['chat_id']
+MAX_THREADS = 3
 
 def run!(cmd)
   puts "▶ #{cmd}"
@@ -37,12 +38,11 @@ def tg_file_send(archive_path, name)
   end
 end
 
-CONFIG['backups'].each do |b|
+def process_backup(b)
   name = b['name']
   puts "\n=== Backup: #{name} ==="
 
   backups_dir = "#{BASE_DIR}/backups/#{name}"
-
   FileUtils.mkdir_p(backups_dir)
 
   Dir.chdir(b['workdir']) do
@@ -53,8 +53,20 @@ CONFIG['backups'].each do |b|
 
   archive_path = "#{BASE_DIR}/backups/#{name}.tar.gz"
   archive_and_compress(backups_dir, archive_path, name)
-
   tg_file_send(archive_path, name)
 end
+
+queue = Queue.new
+CONFIG['backups'].each { |b| queue << b }
+
+workers = Array.new(MAX_THREADS) do
+  Thread.new do
+    while (b = queue.pop(true) rescue nil)
+      process_backup(b)
+    end
+  end
+end
+
+workers.each(&:join)
 
 puts "\n✅ All backups done"
