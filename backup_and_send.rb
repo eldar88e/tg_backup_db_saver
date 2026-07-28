@@ -13,6 +13,7 @@ BASE_DIR = File.expand_path(__dir__)
 TOKEN    = CONFIG['telegram']['bot_token']
 CHAT_ID  = CONFIG['telegram']['chat_id']
 MAX_THREADS = 3
+MAX_TELEGRAM_FILE_SIZE = 45 * 1024 * 1024
 
 def run!(cmd)
   puts "▶ #{cmd}"
@@ -25,16 +26,78 @@ def archive_and_compress(dir, archive, name)
   run!("tar -czf #{archive} -C #{dir} .")
 end
 
+def split_file(path)
+  parts = []
+  index = 1
+
+  File.open(path, 'rb') do |source|
+    until source.eof?
+      part_path = format('%s.part%03d', path, index)
+
+      File.open(part_path, 'wb') do |part|
+        remaining = MAX_TELEGRAM_FILE_SIZE
+
+        while remaining.positive?
+          chunk = source.read([remaining, 1024 * 1024].min)
+          break unless chunk
+
+          part.write(chunk)
+          remaining -= chunk.bytesize
+        end
+      end
+
+      parts << part_path
+      index += 1
+    end
+  end
+
+  parts
+end
+
 def tg_file_send(archive_path, name)
-  puts "📤 Sending #{name} to Telegram..."
+  archive_size_mb = File.size(archive_path) / 1024.0 / 1024
+  puts "📏 Archive size: #{archive_size_mb.round(2)} MB"
+
+  files =
+    if File.size(archive_path) <= MAX_TELEGRAM_FILE_SIZE
+      [archive_path]
+    else
+      puts '✂️ Splitting archive into 45 MB parts...'
+      split_file(archive_path)
+    end
+
   Telegram::Bot::Client.run(TOKEN) do |bot|
-    bot.api.send_document(
-      chat_id: CHAT_ID,
-      document: Faraday::UploadIO.new(archive_path, 'application/gzip'),
-      caption: "Backup for #{name}"
-    )
-  rescue StandardError => e
-    puts "❌ #{e.message}"
+    files.each_with_index do |file, index|
+      puts "📤 Sending #{File.basename(file)}..."
+
+      caption =
+        if files.one?
+          "Backup for #{name}"
+        else
+          "Backup for #{name}: part #{index + 1}/#{files.length}"
+        end
+
+      bot.api.send_document(
+        chat_id: CHAT_ID,
+        document: Faraday::UploadIO.new(
+          file,
+          'application/octet-stream',
+          File.basename(file)
+        ),
+        caption: caption
+      )
+    end
+  end
+
+  puts "✅ Backup #{name} successfully sent"
+rescue StandardError => e
+  warn "❌ Telegram upload failed: #{e.message}"
+  raise
+ensure
+  files&.each do |file|
+    next if file == archive_path
+
+    FileUtils.rm_f(file)
   end
 end
 
